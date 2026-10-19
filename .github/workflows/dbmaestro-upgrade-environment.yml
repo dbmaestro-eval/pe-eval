@@ -1,8 +1,7 @@
 # DBmaestro - Upgrade Environment (manual)
-# Deploys existing PE-Eval packages to the chosen environment, selected by package name,
-# by tag (all packages with that tag), or both.
+# Deploys existing PE-Eval packages to the chosen environment, selected either by
+# package name(s) or by tag (every package with that tag, e.g. a TaskID).
 # Packages must already be built and validated (see dbmaestro-create-package.yml).
-# The CLI is called directly so package and tag can be sent together.
 #
 # Repo settings required:
 #   vars.DBMAESTRO_SERVER       peval-agent.c-dop-t.dbmaestro.com:443
@@ -23,101 +22,60 @@ on:
           - 'QA'
           - 'Production'
       package_name:
-        description: 'Package name(s) to deploy, comma-separated, in deployment order (optional if tag_name is set)'
+        description: 'Package name(s) to deploy, comma-separated, in deployment order (leave empty when using tag_name)'
         required: false
         type: string
         default: ''
       tag_name:
-        description: 'Tag to deploy, e.g. a TaskID (optional if package_name is set)'
+        description: 'Deploy every package with this tag, e.g. a TaskID (leave empty when using package_name)'
         required: false
         type: string
         default: ''
-      tag_type:
-        description: 'Tag type of tag_name (must exist in DOP)'
-        required: false
-        type: string
-        default: 'Task'
 
 # One upgrade at a time per environment
 concurrency:
   group: dbmaestro-upgrade-PE-Eval-${{ inputs.target_environment }}
   cancel-in-progress: false
 
-env:
-  DBMAESTRO_AGENT_JAR: /home/runner/DBmaestroAgent.jar
-
 jobs:
-  upgrade:
-    name: Upgrade ${{ inputs.target_environment }}
+  validate_inputs:
+    name: Validate Inputs
     runs-on: ubuntu-latest
     steps:
-      - name: Download DBmaestro CLI
-        uses: DBMaestroDev/dbmaestro-cicd/.github/actions/sh/get-cli-jar@v1
-        with:
-          version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
-          jar-path: ${{ env.DBMAESTRO_AGENT_JAR }}
-
-      - name: Upgrade
+      - name: Require package_name or tag_name
         shell: bash
         env:
-          PROJECT_NAME: 'PE-Eval'
-          TARGET_ENV: ${{ inputs.target_environment }}
-          PACKAGE_NAMES: ${{ inputs.package_name }}
+          PACKAGE_NAME: ${{ inputs.package_name }}
           TAG_NAME: ${{ inputs.tag_name }}
-          TAG_TYPE: ${{ inputs.tag_type }}
-          DBMAESTRO_SERVER: ${{ vars.DBMAESTRO_SERVER }}
-          DBMAESTRO_USER: ${{ vars.DBMAESTRO_USER }}
-          DBMAESTRO_PASSWORD: ${{ secrets.DBMAESTRO_PASSWORD }}
         run: |
-          set -euo pipefail
-          PACKAGE_NAMES="$(echo "$PACKAGE_NAMES" | xargs)"
+          PACKAGE_NAME="$(echo "$PACKAGE_NAME" | xargs)"
           TAG_NAME="$(echo "$TAG_NAME" | xargs)"
-          TAG_TYPE="$(echo "$TAG_TYPE" | xargs)"
-          if [ -z "$PACKAGE_NAMES" ] && [ -z "$TAG_NAME" ]; then
-            echo "::error::Provide package_name, tag_name, or both"
+          if [ -z "$PACKAGE_NAME" ] && [ -z "$TAG_NAME" ]; then
+            echo "::error::Provide package_name or tag_name"
             exit 1
           fi
-          TAG_ARGS=()
-          if [ -n "$TAG_NAME" ]; then
-            TAG_ARGS=(-TagName "$TAG_NAME" -TagType "$TAG_TYPE")
+          if [ -n "$PACKAGE_NAME" ] && [ -n "$TAG_NAME" ]; then
+            echo "::error::Provide package_name or tag_name, not both"
+            exit 1
           fi
 
-          {
-            echo "## :rocket: Upgrade $TARGET_ENV"
-            echo "| Package | Tag | Result |"
-            echo "|---------|-----|--------|"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          # upgrade <package-or-empty>: empty package = deploy every package with the tag
-          upgrade() {
-            local pkg="$1"
-            local pkg_args=()
-            [ -n "$pkg" ] && pkg_args=(-PackageName "$pkg")
-            echo "==== Upgrading $TARGET_ENV: package ${pkg:-<by tag>} ${TAG_NAME:+tag $TAG_TYPE:$TAG_NAME} ===="
-            if java -jar "$DBMAESTRO_AGENT_JAR" -Upgrade \
-                -ProjectName "$PROJECT_NAME" \
-                -EnvName "$TARGET_ENV" \
-                "${pkg_args[@]}" \
-                "${TAG_ARGS[@]}" \
-                -Server "$DBMAESTRO_SERVER" \
-                -UseSSL True \
-                -AuthType DBmaestroAccount \
-                -UserName "$DBMAESTRO_USER" \
-                -Password "$DBMAESTRO_PASSWORD"; then
-              echo "| ${pkg:-(by tag)} | ${TAG_NAME:--} | :white_check_mark: |" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "| ${pkg:-(by tag)} | ${TAG_NAME:--} | :x: |" >> "$GITHUB_STEP_SUMMARY"
-              echo "::error::Upgrade of $TARGET_ENV failed (package: ${pkg:-by tag}, tag: ${TAG_NAME:--})"
-              exit 1
-            fi
-          }
-
-          if [ -z "$PACKAGE_NAMES" ]; then
-            upgrade ""
-          else
-            IFS=',' read -ra PACKAGES <<< "$PACKAGE_NAMES"
-            for pkg in "${PACKAGES[@]}"; do
-              pkg="$(echo "$pkg" | xargs)"
-              [ -n "$pkg" ] && upgrade "$pkg"
-            done
-          fi
+  upgrade:
+    name: Upgrade ${{ inputs.target_environment }}
+    needs: validate_inputs
+    uses: DBMaestroDev/dbmaestro-cicd/.github/workflows/sh-upgrade-environment.yml@v1
+    with:
+      project_name: 'PE-Eval'
+      target_environment: ${{ inputs.target_environment }}
+      package_name: ${{ inputs.package_name }}
+      tag_name: ${{ inputs.tag_name }}
+      detect_from_push: false
+      is_pull_request: false
+      cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
+      agent_jar_path: '/home/runner/DBmaestroAgent.jar'
+      runner: 'ubuntu-latest'
+      use_ssl: 'True'
+      auth_type: 'DBmaestroAccount'
+      dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}
+      dbmaestro_user: ${{ vars.DBMAESTRO_USER }}
+    secrets:
+      DBMAESTRO_PASSWORD: ${{ secrets.DBMAESTRO_PASSWORD }}
