@@ -1,9 +1,8 @@
 # DBmaestro - Upgrade Environment (manual)
-# Deploys one or more existing PE-Eval packages to the chosen environment.
+# Deploys existing PE-Eval packages to the chosen environment, selected by package name,
+# by tag (all packages with that tag), or both.
 # Packages must already be built and validated (see dbmaestro-create-package.yml).
-# Optional tag_name/tag_type limit the upgrade to the package content with that tag
-# (DBmaestro CLI 26.1.4: -Upgrade takes -TagName/-TagType only together with -PackageName,
-# so the CLI is called directly instead of through the dbmaestro-cicd upgrade workflow).
+# The CLI is called directly so package and tag can be sent together.
 #
 # Repo settings required:
 #   vars.DBMAESTRO_SERVER       peval-agent.c-dop-t.dbmaestro.com:443
@@ -24,11 +23,12 @@ on:
           - 'QA'
           - 'Production'
       package_name:
-        description: 'Package name(s) to deploy, comma-separated, in deployment order'
-        required: true
+        description: 'Package name(s) to deploy, comma-separated, in deployment order (optional if tag_name is set)'
+        required: false
         type: string
+        default: ''
       tag_name:
-        description: 'Only deploy package content with this tag (optional)'
+        description: 'Tag to deploy, e.g. a TaskID (optional if package_name is set)'
         required: false
         type: string
         default: ''
@@ -70,8 +70,13 @@ jobs:
           DBMAESTRO_PASSWORD: ${{ secrets.DBMAESTRO_PASSWORD }}
         run: |
           set -euo pipefail
+          PACKAGE_NAMES="$(echo "$PACKAGE_NAMES" | xargs)"
           TAG_NAME="$(echo "$TAG_NAME" | xargs)"
           TAG_TYPE="$(echo "$TAG_TYPE" | xargs)"
+          if [ -z "$PACKAGE_NAMES" ] && [ -z "$TAG_NAME" ]; then
+            echo "::error::Provide package_name, tag_name, or both"
+            exit 1
+          fi
           TAG_ARGS=()
           if [ -n "$TAG_NAME" ]; then
             TAG_ARGS=(-TagName "$TAG_NAME" -TagType "$TAG_TYPE")
@@ -83,25 +88,36 @@ jobs:
             echo "|---------|-----|--------|"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          IFS=',' read -ra PACKAGES <<< "$PACKAGE_NAMES"
-          for pkg in "${PACKAGES[@]}"; do
-            pkg="$(echo "$pkg" | xargs)"
-            [ -z "$pkg" ] && continue
-            echo "==== Upgrading $TARGET_ENV with package $pkg ${TAG_NAME:+(tag $TAG_TYPE:$TAG_NAME)} ===="
+          # upgrade <package-or-empty>: empty package = deploy every package with the tag
+          upgrade() {
+            local pkg="$1"
+            local pkg_args=()
+            [ -n "$pkg" ] && pkg_args=(-PackageName "$pkg")
+            echo "==== Upgrading $TARGET_ENV: package ${pkg:-<by tag>} ${TAG_NAME:+tag $TAG_TYPE:$TAG_NAME} ===="
             if java -jar "$DBMAESTRO_AGENT_JAR" -Upgrade \
                 -ProjectName "$PROJECT_NAME" \
                 -EnvName "$TARGET_ENV" \
-                -PackageName "$pkg" \
+                "${pkg_args[@]}" \
                 "${TAG_ARGS[@]}" \
                 -Server "$DBMAESTRO_SERVER" \
                 -UseSSL True \
                 -AuthType DBmaestroAccount \
                 -UserName "$DBMAESTRO_USER" \
                 -Password "$DBMAESTRO_PASSWORD"; then
-              echo "| $pkg | ${TAG_NAME:--} | :white_check_mark: |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| ${pkg:-(by tag)} | ${TAG_NAME:--} | :white_check_mark: |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| $pkg | ${TAG_NAME:--} | :x: |" >> "$GITHUB_STEP_SUMMARY"
-              echo "::error::Upgrade of $TARGET_ENV with package $pkg failed"
+              echo "| ${pkg:-(by tag)} | ${TAG_NAME:--} | :x: |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Upgrade of $TARGET_ENV failed (package: ${pkg:-by tag}, tag: ${TAG_NAME:--})"
               exit 1
             fi
-          done
+          }
+
+          if [ -z "$PACKAGE_NAMES" ]; then
+            upgrade ""
+          else
+            IFS=',' read -ra PACKAGES <<< "$PACKAGE_NAMES"
+            for pkg in "${PACKAGES[@]}"; do
+              pkg="$(echo "$pkg" | xargs)"
+              [ -n "$pkg" ] && upgrade "$pkg"
+            done
+          fi
