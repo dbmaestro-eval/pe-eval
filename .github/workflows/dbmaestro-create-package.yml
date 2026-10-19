@@ -37,7 +37,7 @@ on:
 jobs:
   prepare:
     name: Prepare Parameters
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       task_id: ${{ steps.params.outputs.task_id }}
       package_name: ${{ steps.params.outputs.package_name }}
@@ -74,7 +74,7 @@ jobs:
       tag_type_name: ${{ inputs.tag_type_name }}
       cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
       agent_jar_path: '/home/runner/DBmaestroAgent.jar'
-      runner: 'ubuntu-latest'
+      runner: 'ubuntu-24.04'
       use_ssl: 'True'
       auth_type: 'DBmaestroAccount'
       dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}

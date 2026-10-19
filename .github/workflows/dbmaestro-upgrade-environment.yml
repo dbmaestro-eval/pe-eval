@@ -40,7 +40,7 @@ concurrency:
 jobs:
   validate_inputs:
     name: Validate Inputs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Require package_name or tag_name
         shell: bash
@@ -72,7 +72,7 @@ jobs:
       is_pull_request: false
       cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
       agent_jar_path: '/home/runner/DBmaestroAgent.jar'
-      runner: 'ubuntu-latest'
+      runner: 'ubuntu-24.04'
       use_ssl: 'True'
       auth_type: 'DBmaestroAccount'
       dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}
