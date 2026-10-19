@@ -1,0 +1,81 @@
+# DBmaestro - Upgrade Environment (manual)
+# Deploys one or more existing PE-Eval packages (or every package with a tag) to the chosen environment.
+# Packages must already be built and validated (see dbmaestro-create-package.yml).
+# Task packages are tagged with their TaskID by DOP, so tag_name can be a TaskID.
+#
+# Repo settings required:
+#   vars.DBMAESTRO_SERVER       peval-agent.c-dop-t.dbmaestro.com:443
+#   vars.DBMAESTRO_USER         peval@dbmaestro.com
+#   secrets.DBMAESTRO_PASSWORD  password for DBMAESTRO_USER
+#   vars.CLI_VERSION            optional, defaults to 26.1.4.13766 (closest published JAR to server 26.1.4.13770)
+
+name: DBmaestro - Upgrade Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: 'Environment to upgrade'
+        required: true
+        type: choice
+        options:
+          - 'QA'
+          - 'Production'
+      package_name:
+        description: 'Package name(s) to deploy, comma-separated (leave empty when using tag_name)'
+        required: false
+        type: string
+        default: ''
+      tag_name:
+        description: 'Deploy all packages with this tag, e.g. a TaskID (use instead of package_name)'
+        required: false
+        type: string
+        default: ''
+
+# One upgrade at a time per environment
+concurrency:
+  group: dbmaestro-upgrade-PE-Eval-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  validate_inputs:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require package_name or tag_name
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ inputs.package_name }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          PACKAGE_NAME="$(echo "$PACKAGE_NAME" | xargs)"
+          TAG_NAME="$(echo "$TAG_NAME" | xargs)"
+          if [ -z "$PACKAGE_NAME" ] && [ -z "$TAG_NAME" ]; then
+            echo "::error::Provide package_name or tag_name"
+            exit 1
+          fi
+          if [ -n "$PACKAGE_NAME" ] && [ -n "$TAG_NAME" ]; then
+            echo "::error::Provide package_name or tag_name, not both"
+            exit 1
+          fi
+
+  upgrade:
+    name: Upgrade ${{ inputs.target_environment }}
+    needs: validate_inputs
+    uses: DBMaestroDev/dbmaestro-cicd/.github/workflows/sh-upgrade-environment.yml@v1
+    with:
+      project_name: 'PE-Eval'
+      target_environment: ${{ inputs.target_environment }}
+      package_name: ${{ inputs.package_name }}
+      tag_name: ${{ inputs.tag_name }}
+      detect_from_push: false
+      is_pull_request: false
+      cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
+      agent_jar_path: '/home/runner/DBmaestroAgent.jar'
+      runner: 'ubuntu-latest'
+      use_ssl: 'True'
+      auth_type: 'DBmaestroAccount'
+      dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}
+      dbmaestro_user: ${{ vars.DBMAESTRO_USER }}
+    secrets:
+      DBMAESTRO_PASSWORD: ${{ secrets.DBMAESTRO_PASSWORD }}

@@ -1,0 +1,71 @@
+# DBmaestro - Create Package (manual)
+# Builds a PE-Eval package from DBmaestro Source Control for one TaskID,
+# always with downgrade scripts, then validates it (precheck).
+# DOP tags task packages with their TaskID automatically, so no tagging step is needed.
+#
+# Repo settings required:
+#   vars.DBMAESTRO_SERVER       peval-agent.c-dop-t.dbmaestro.com:443
+#   vars.DBMAESTRO_USER         peval@dbmaestro.com
+#   secrets.DBMAESTRO_PASSWORD  password for DBMAESTRO_USER
+#   vars.CLI_VERSION            optional, defaults to 26.1.4.13766 (closest published JAR to server 26.1.4.13770)
+
+name: DBmaestro - Create Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'TaskID to package (as used in the commit message, e.g. Task-1)'
+        required: true
+        type: string
+      package_name:
+        description: 'Package name (optional, defaults to the TaskID)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  prepare:
+    name: Prepare Parameters
+    runs-on: ubuntu-latest
+    outputs:
+      task_id: ${{ steps.params.outputs.task_id }}
+      package_name: ${{ steps.params.outputs.package_name }}
+    steps:
+      - name: Resolve package name
+        id: params
+        shell: bash
+        env:
+          TASK_ID: ${{ inputs.task_id }}
+          PACKAGE_NAME: ${{ inputs.package_name }}
+        run: |
+          TASK_ID="$(echo "$TASK_ID" | xargs)"
+          PACKAGE_NAME="$(echo "$PACKAGE_NAME" | xargs)"
+          if [ -z "$TASK_ID" ]; then
+            echo "::error::task_id is required"
+            exit 1
+          fi
+          [ -z "$PACKAGE_NAME" ] && PACKAGE_NAME="$TASK_ID"
+          echo "task_id=$TASK_ID" >> "$GITHUB_OUTPUT"
+          echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+
+  build_and_validate:
+    name: Build and Validate Package
+    needs: prepare
+    uses: DBMaestroDev/dbmaestro-cicd/.github/workflows/sh-build-source-control.yml@v1
+    with:
+      project_name: 'PE-Eval'
+      environment-name: 'Dev'
+      package_name: ${{ needs.prepare.outputs.package_name }}
+      version_type: 'Tasks'
+      additional_information: ${{ needs.prepare.outputs.task_id }}
+      create_downgrade_scripts: 'True'
+      cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
+      agent_jar_path: '/home/runner/DBmaestroAgent.jar'
+      runner: 'ubuntu-latest'
+      use_ssl: 'True'
+      auth_type: 'DBmaestroAccount'
+      dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}
+      dbmaestro_user: ${{ vars.DBMAESTRO_USER }}
+    secrets:
+      DBMAESTRO_PASSWORD: ${{ secrets.DBMAESTRO_PASSWORD }}
