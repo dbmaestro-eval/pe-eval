@@ -1,6 +1,9 @@
 # DBmaestro - Upgrade Environment (manual)
 # Deploys one or more existing PE-Eval packages to the chosen environment.
 # Packages must already be built and validated (see dbmaestro-create-package.yml).
+# Optional tag_name/tag_type limit the upgrade to the package content with that tag
+# (DBmaestro CLI 26.1.4: -Upgrade takes -TagName/-TagType only together with -PackageName,
+# so the CLI is called directly instead of through the dbmaestro-cicd upgrade workflow).
 #
 # Repo settings required:
 #   vars.DBMAESTRO_SERVER       peval-agent.c-dop-t.dbmaestro.com:443
@@ -24,28 +27,81 @@ on:
         description: 'Package name(s) to deploy, comma-separated, in deployment order'
         required: true
         type: string
+      tag_name:
+        description: 'Only deploy package content with this tag (optional)'
+        required: false
+        type: string
+        default: ''
+      tag_type:
+        description: 'Tag type of tag_name (must exist in DOP)'
+        required: false
+        type: string
+        default: 'Task'
 
 # One upgrade at a time per environment
 concurrency:
   group: dbmaestro-upgrade-PE-Eval-${{ inputs.target_environment }}
   cancel-in-progress: false
 
+env:
+  DBMAESTRO_AGENT_JAR: /home/runner/DBmaestroAgent.jar
+
 jobs:
   upgrade:
     name: Upgrade ${{ inputs.target_environment }}
-    uses: DBMaestroDev/dbmaestro-cicd/.github/workflows/sh-upgrade-environment.yml@v1
-    with:
-      project_name: 'PE-Eval'
-      target_environment: ${{ inputs.target_environment }}
-      package_name: ${{ inputs.package_name }}
-      detect_from_push: false
-      is_pull_request: false
-      cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
-      agent_jar_path: '/home/runner/DBmaestroAgent.jar'
-      runner: 'ubuntu-latest'
-      use_ssl: 'True'
-      auth_type: 'DBmaestroAccount'
-      dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}
-      dbmaestro_user: ${{ vars.DBMAESTRO_USER }}
-    secrets:
-      DBMAESTRO_PASSWORD: ${{ secrets.DBMAESTRO_PASSWORD }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download DBmaestro CLI
+        uses: DBMaestroDev/dbmaestro-cicd/.github/actions/sh/get-cli-jar@v1
+        with:
+          version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
+          jar-path: ${{ env.DBMAESTRO_AGENT_JAR }}
+
+      - name: Upgrade
+        shell: bash
+        env:
+          PROJECT_NAME: 'PE-Eval'
+          TARGET_ENV: ${{ inputs.target_environment }}
+          PACKAGE_NAMES: ${{ inputs.package_name }}
+          TAG_NAME: ${{ inputs.tag_name }}
+          TAG_TYPE: ${{ inputs.tag_type }}
+          DBMAESTRO_SERVER: ${{ vars.DBMAESTRO_SERVER }}
+          DBMAESTRO_USER: ${{ vars.DBMAESTRO_USER }}
+          DBMAESTRO_PASSWORD: ${{ secrets.DBMAESTRO_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="$(echo "$TAG_NAME" | xargs)"
+          TAG_TYPE="$(echo "$TAG_TYPE" | xargs)"
+          TAG_ARGS=()
+          if [ -n "$TAG_NAME" ]; then
+            TAG_ARGS=(-TagName "$TAG_NAME" -TagType "$TAG_TYPE")
+          fi
+
+          {
+            echo "## :rocket: Upgrade $TARGET_ENV"
+            echo "| Package | Tag | Result |"
+            echo "|---------|-----|--------|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          IFS=',' read -ra PACKAGES <<< "$PACKAGE_NAMES"
+          for pkg in "${PACKAGES[@]}"; do
+            pkg="$(echo "$pkg" | xargs)"
+            [ -z "$pkg" ] && continue
+            echo "==== Upgrading $TARGET_ENV with package $pkg ${TAG_NAME:+(tag $TAG_TYPE:$TAG_NAME)} ===="
+            if java -jar "$DBMAESTRO_AGENT_JAR" -Upgrade \
+                -ProjectName "$PROJECT_NAME" \
+                -EnvName "$TARGET_ENV" \
+                -PackageName "$pkg" \
+                "${TAG_ARGS[@]}" \
+                -Server "$DBMAESTRO_SERVER" \
+                -UseSSL True \
+                -AuthType DBmaestroAccount \
+                -UserName "$DBMAESTRO_USER" \
+                -Password "$DBMAESTRO_PASSWORD"; then
+              echo "| $pkg | ${TAG_NAME:--} | :white_check_mark: |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $pkg | ${TAG_NAME:--} | :x: |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Upgrade of $TARGET_ENV with package $pkg failed"
+              exit 1
+            fi
+          done
