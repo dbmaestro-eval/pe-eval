@@ -1,7 +1,7 @@
 # DBmaestro - Upgrade Environment (manual)
-# Deploys one or more existing PE-Eval packages (or every package with a tag) to the chosen environment.
+# Deploys existing PE-Eval packages to the chosen environment, selected either by
+# package name(s) or by tag (every package with that tag, e.g. a TaskID).
 # Packages must already be built and validated (see dbmaestro-create-package.yml).
-# Task packages are tagged with their TaskID by DOP, so tag_name can be a TaskID.
 #
 # Repo settings required:
 #   vars.DBMAESTRO_SERVER       peval-agent.c-dop-t.dbmaestro.com:443
@@ -22,12 +22,12 @@ on:
           - 'QA'
           - 'Production'
       package_name:
-        description: 'Package name(s) to deploy, comma-separated (leave empty when using tag_name)'
+        description: 'Package name(s) to deploy, comma-separated, in deployment order (leave empty when using tag_name)'
         required: false
         type: string
         default: ''
       tag_name:
-        description: 'Deploy all packages with this tag, e.g. a TaskID (use instead of package_name)'
+        description: 'Deploy every package with this tag, e.g. a TaskID (leave empty when using package_name)'
         required: false
         type: string
         default: ''
@@ -40,7 +40,7 @@ concurrency:
 jobs:
   validate_inputs:
     name: Validate Inputs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Require package_name or tag_name
         shell: bash
@@ -72,7 +72,7 @@ jobs:
       is_pull_request: false
       cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
       agent_jar_path: '/home/runner/DBmaestroAgent.jar'
-      runner: 'ubuntu-latest'
+      runner: 'ubuntu-24.04'
       use_ssl: 'True'
       auth_type: 'DBmaestroAccount'
       dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}

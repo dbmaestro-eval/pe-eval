@@ -1,7 +1,7 @@
 # DBmaestro - Create Package (manual)
 # Builds a PE-Eval package from DBmaestro Source Control for one TaskID,
 # always with downgrade scripts, then validates it (precheck).
-# DOP tags task packages with their TaskID automatically, so no tagging step is needed.
+# DOP tags task packages with their TaskID automatically; extra tags can be added with the tags input.
 #
 # Repo settings required:
 #   vars.DBMAESTRO_SERVER       peval-agent.c-dop-t.dbmaestro.com:443
@@ -23,11 +23,21 @@ on:
         required: false
         type: string
         default: ''
+      tags:
+        description: 'Tags to add to the package, comma-separated (optional)'
+        required: false
+        type: string
+        default: ''
+      tag_type_name:
+        description: 'Tag type for the tags above (must exist in DOP)'
+        required: false
+        type: string
+        default: 'Task'
 
 jobs:
   prepare:
     name: Prepare Parameters
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       task_id: ${{ steps.params.outputs.task_id }}
       package_name: ${{ steps.params.outputs.package_name }}
@@ -60,9 +70,11 @@ jobs:
       version_type: 'Tasks'
       additional_information: ${{ needs.prepare.outputs.task_id }}
       create_downgrade_scripts: 'True'
+      tags: ${{ inputs.tags }}
+      tag_type_name: ${{ inputs.tag_type_name }}
       cli_version: ${{ vars.CLI_VERSION || '26.1.4.13766' }}
       agent_jar_path: '/home/runner/DBmaestroAgent.jar'
-      runner: 'ubuntu-latest'
+      runner: 'ubuntu-24.04'
       use_ssl: 'True'
       auth_type: 'DBmaestroAccount'
       dbmaestro_server: ${{ vars.DBMAESTRO_SERVER }}
