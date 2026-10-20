@@ -43,7 +43,8 @@ The SQL scripts for each exercise are in [`scripts/`](scripts/).
   - [**DBmaestro - Upgrade Environment**](.github/workflows/dbmaestro-upgrade-environment.yml): deploys one or more packages (or every package with a tag) to **QA** or **Production**.
 - SQL Server connection details (server, port and credentials) are provided by the instructor.
 
-> PE-Eval is a **shared** project: everyone works on the same databases, packages and Git branch. Run the exercises in order, one person at a time (or one exercise at a time per group), and use exactly the package and Task ID names in this guide.
+> This practice is for a **single user**: one person runs the exercises, in order, on the PE-Eval project, its databases and the `main` branch. It is not designed for several people working at the same time. Use exactly the package and Task ID names in this guide.
+> The environment can be **reset at any time** if you need to start over: ask the instructor to restore PE-Eval to its initial state (empty databases, only package `V0`, deployed to QA and Production).
 > Objects are created in the `dbo` schema.
 > A red frame in a screenshot marks the element to click.
 
