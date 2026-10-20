@@ -1,4 +1,5 @@
--- EX02 - Run on PE_Eval_DEV (SSMS) after dev_create_customers.sql: creates the EX_ADD_CUSTOMER procedure
+-- EX03 - Run on PE_Eval_DEV (SSMS): "official" change to EX_ADD_CUSTOMER
+-- Adds a validation: email is mandatory and is stored in lowercase.
 CREATE   PROCEDURE dbo.EX_ADD_CUSTOMER
     @p_id    INT,
     @p_first NVARCHAR(50),
@@ -8,6 +9,9 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    IF @p_email IS NULL
+        THROW 50001, N'EMAIL is mandatory', 1;
+
     INSERT INTO dbo.EX_CUSTOMERS (CUSTOMER_ID, FIRST_NAME, LAST_NAME, EMAIL)
-    VALUES (@p_id, @p_first, @p_last, @p_email);
+    VALUES (@p_id, @p_first, @p_last, LOWER(@p_email));
 END;
