@@ -1,0 +1,5 @@
+CREATE   PROCEDURE sP_Jtest1
+as
+BEGIN
+PRINT 'J1'
+END
