@@ -1,0 +1,8 @@
+CREATE PROCEDURE dbo.SP_View_EMP1
+AS
+BEGIN
+ 
+SELECT * FROM tblEmp1
+ 
+ 
+END
