@@ -1,0 +1,8 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Table_1](
+	[column] [nchar](10) NULL
+)
+GO
