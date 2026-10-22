@@ -1,0 +1,8 @@
+CREATE PROCEDURE SP_Printline_Demo_T2
+AS
+BEGIN
+ 
+SELECT '11'
+ 
+ 
+END
