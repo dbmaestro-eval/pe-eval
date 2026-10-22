@@ -1,0 +1,8 @@
+CREATE PROCEDURE SP_View_EMP
+AS
+BEGIN
+ 
+SELECT * FROM tblEmp
+ 
+ 
+END
