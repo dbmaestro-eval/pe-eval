@@ -1,0 +1,7 @@
+[
+  {
+    "schema": "dbo",
+    "name": "vw_REL_ActiveCustomers",
+    "type": "View"
+  }
+]
